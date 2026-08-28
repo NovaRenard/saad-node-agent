@@ -1,0 +1,28 @@
+[Unit]
+Description=saad telemetry-only node agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=saad-node-agent
+Group=saad-node-agent
+WorkingDirectory=/opt/saad-node-agent
+EnvironmentFile=/etc/saad-node-agent/agent.env
+ExecStart=/opt/saad-node-agent/.venv/bin/python -m agent.main
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
