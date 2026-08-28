@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from agent import __version__
 from agent.client.dashboard import post_heartbeat
+from agent.client.realtime import RealtimeState, run_realtime
 from agent.collectors.docker import aggregate_resources, collect_docker_snapshot, containers_for_project
 from agent.collectors.host import collect_host_telemetry
 from agent.collectors.saad_deploy import collect_deployment_state, discover_instances
@@ -71,35 +72,49 @@ def collect_payload(settings: Settings) -> HeartbeatPayload:
 
 
 async def run_forever(settings: Settings, stop_event: asyncio.Event | None = None) -> None:
-    """Run heartbeats until the service receives SIGTERM or SIGINT."""
+    """Prefer realtime WebSocket telemetry, with bounded HTTP reconciliation."""
 
     stop_event = stop_event or asyncio.Event()
     timeout = httpx.Timeout(settings.http_timeout_seconds)
+    realtime_state = RealtimeState()
+    realtime_task = asyncio.create_task(run_realtime(settings, realtime_state, stop_event, collect_payload))
     async with httpx.AsyncClient(timeout=timeout) as client:
-        while not stop_event.is_set():
-            started_at = time.monotonic()
+        try:
+            # Give the persistent connection a chance to become healthy before
+            # using HTTP. This avoids two aggressive telemetry streams.
             try:
-                payload = await asyncio.to_thread(collect_payload, settings)
-                delivered = await post_heartbeat(
-                    client,
-                    str(settings.dashboard_url),
-                    settings.node_token,
-                    payload,
-                    max_attempts=settings.heartbeat_max_attempts,
-                )
-                if delivered:
-                    logger.info("Heartbeat sent: node=%s instances=%s", settings.node_id, len(payload.instances))
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                # Keep the systemd process alive for recoverable operating
-                # failures; unexpected details are retained in journald.
-                logger.exception("Unhandled error while preparing heartbeat")
-
-            remaining = max(0.0, settings.heartbeat_interval_seconds - (time.monotonic() - started_at))
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=remaining)
+                await asyncio.wait_for(realtime_state.connected.wait(), timeout=min(5.0, settings.full_snapshot_interval_seconds))
             except TimeoutError:
+                pass
+            while not stop_event.is_set():
+                started_at = time.monotonic()
+                if not realtime_state.is_healthy:
+                    try:
+                        payload = await asyncio.to_thread(collect_payload, settings)
+                        delivered = await post_heartbeat(
+                            client,
+                            str(settings.dashboard_url),
+                            settings.node_token,
+                            payload,
+                            max_attempts=settings.heartbeat_max_attempts,
+                        )
+                        if delivered:
+                            logger.info("HTTP fallback reconciliation sent: node=%s instances=%s", settings.node_id, len(payload.instances))
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.exception("Unhandled error while preparing HTTP fallback heartbeat")
+
+                remaining = max(0.0, settings.full_snapshot_interval_seconds - (time.monotonic() - started_at))
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=remaining)
+                except TimeoutError:
+                    pass
+        finally:
+            realtime_task.cancel()
+            try:
+                await realtime_task
+            except asyncio.CancelledError:
                 pass
 
 
