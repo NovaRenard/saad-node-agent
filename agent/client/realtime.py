@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 from collections.abc import Callable
@@ -11,7 +12,15 @@ from urllib.parse import urlsplit, urlunsplit
 from websockets.asyncio.client import connect
 
 from agent.config import Settings
-from agent.models import HeartbeatPayload
+from agent.events import AgentEventEmitter
+from agent.models import (
+    AgentEventType,
+    DashboardEventType,
+    HeartbeatPayload,
+    ProtocolErrorPayload,
+    make_agent_event,
+    parse_dashboard_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,16 +69,44 @@ async def run_realtime(
                 state.connected.set()
                 delay = settings.ws_reconnect_initial_seconds
                 logger.info("Realtime transport connected: node=%s", settings.node_id)
+                emitter = AgentEventEmitter(settings.node_id)
+                last_snapshot_at = 0.0
+                snapshot_requested = True
                 while not stop_event.is_set():
                     started_at = asyncio.get_running_loop().time()
                     payload = await asyncio.to_thread(collect_payload, settings)
-                    await websocket.send(payload.model_dump_json())
-                    # Stage 1 only expects acknowledgement frames. Stage 2
-                    # adds a typed receive loop for dashboard-to-agent events.
+                    if snapshot_requested or started_at - last_snapshot_at >= settings.full_snapshot_interval_seconds:
+                        events = [emitter.snapshot(payload)]
+                        last_snapshot_at = started_at
+                        snapshot_requested = False
+                    else:
+                        events = emitter.changes_and_telemetry(payload)
+                    for event in events:
+                        await websocket.send(event.model_dump_json())
+
+                    # Drain a short control window so a snapshot request is
+                    # served promptly without a busy receive loop.
                     try:
-                        await asyncio.wait_for(websocket.recv(), timeout=0.5)
+                        raw_message = await asyncio.wait_for(websocket.recv(), timeout=min(0.25, settings.telemetry_interval_seconds))
                     except TimeoutError:
-                        pass
+                        raw_message = None
+                    if raw_message is not None:
+                        try:
+                            envelope, _control = parse_dashboard_event(json.loads(raw_message))
+                            if envelope.type == DashboardEventType.SNAPSHOT_REQUEST:
+                                snapshot_requested = True
+                            else:
+                                logger.warning("Dashboard event %s is not enabled yet", envelope.type.value)
+                                await websocket.send(
+                                    make_agent_event(
+                                        AgentEventType.ERROR,
+                                        settings.node_id,
+                                        ProtocolErrorPayload(code="unsupported_event", message=f"{envelope.type.value} is not enabled"),
+                                        correlation_id=envelope.message_id,
+                                    ).model_dump_json()
+                                )
+                        except (ValueError, json.JSONDecodeError):
+                            logger.warning("Ignoring invalid or unsupported dashboard WebSocket event")
                     elapsed = asyncio.get_running_loop().time() - started_at
                     try:
                         await asyncio.wait_for(stop_event.wait(), timeout=max(0.0, settings.telemetry_interval_seconds - elapsed))
