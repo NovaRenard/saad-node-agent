@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import enum
+from datetime import datetime, timezone
+from typing import Any
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,9 +44,6 @@ class ContainerTelemetry(BaseModel):
 class InstanceResources(BaseModel):
     cpu_percent: float = 0.0
     memory_used_mb: float = 0.0
-    containers_total: int = 0
-    containers_running: int = 0
-    containers_healthy: int = 0
 
 
 class InstanceTelemetry(BaseModel):
@@ -67,6 +67,7 @@ class HeartbeatPayload(BaseModel):
     sent_at: datetime
     host: HostTelemetry
     instances: list[InstanceTelemetry] = Field(default_factory=list)
+
 
 class StrictEventModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -148,6 +149,16 @@ class LogsStartPayload(StrictEventModel):
 
 class LogsStopPayload(StrictEventModel):
     request_id: UUID
+
+
+class LogsChunkPayload(StrictEventModel):
+    request_id: UUID
+    text: str = Field(min_length=1, max_length=16_384)
+
+
+class LogsEndedPayload(StrictEventModel):
+    request_id: UUID
+    reason: str = Field(min_length=1, max_length=80)
 
 
 class ProtocolErrorPayload(StrictEventModel):

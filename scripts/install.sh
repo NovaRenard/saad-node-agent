@@ -32,11 +32,16 @@ find "$INSTALL_DIR" -type d -exec chmod 0755 {} +
 find "$INSTALL_DIR" -type f -exec chmod 0644 {} +
 chown -R root:root "$INSTALL_DIR"
 
-"$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+# The source-permission normalization above also touches a prior virtualenv on
+# updates. Recreate that derived directory so its interpreter and entry points
+# are executable again; the root-owned configuration directory is unaffected.
+"$PYTHON_BIN" -m venv --clear "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install --disable-pip-version-check --upgrade pip
 "$INSTALL_DIR/.venv/bin/pip" install --disable-pip-version-check -r "$INSTALL_DIR/requirements.txt"
 
 install -o root -g "$AGENT_USER" -m 0750 "$SOURCE_DIR/scripts/snapshot.sh" "$HELPER_DIR/snapshot.sh"
+install -o root -g "$AGENT_USER" -m 0750 "$SOURCE_DIR/scripts/deploy_metadata.py" "$HELPER_DIR/deploy-metadata.py"
+install -o root -g "$AGENT_USER" -m 0750 "$SOURCE_DIR/scripts/control_helper.py" "$HELPER_DIR/control-helper.py"
 install -o root -g root -m 0644 "$SOURCE_DIR/systemd/saad-node-agent.service" "$SYSTEMD_UNIT"
 
 if [ ! -f "$CONFIG_DIR/agent.env" ]; then
@@ -48,8 +53,8 @@ else
 fi
 
 cat >"$SUDOERS_FILE" <<'EOF'
-# Permit only the fixed, argument-free Docker read-only snapshot helper.
-saad-node-agent ALL=(root) NOPASSWD: /usr/local/lib/saad-node-agent/snapshot.sh ""
+# Permit only fixed, argument-free, read-only telemetry helpers.
+saad-node-agent ALL=(root) NOPASSWD: /usr/local/lib/saad-node-agent/snapshot.sh "", /usr/local/lib/saad-node-agent/deploy-metadata.py "", /usr/local/lib/saad-node-agent/control-helper.py logs *
 EOF
 chmod 0440 "$SUDOERS_FILE"
 visudo -cf "$SUDOERS_FILE"

@@ -62,11 +62,7 @@ class DockerCollectorTests(unittest.TestCase):
         resources = aggregate_resources(containers)
 
         self.assertEqual([container.service for container in containers], ["backend", "worker"])
-        self.assertEqual(resources.cpu_percent, 2.0)
-        self.assertEqual(resources.memory_used_mb, 252.0)
-        self.assertEqual(resources.containers_total, 2)
-        self.assertEqual(resources.containers_running, 1)
-        self.assertEqual(resources.containers_healthy, 1)
+        self.assertEqual(resources.model_dump(), {"cpu_percent": 2.0, "memory_used_mb": 252.0})
         self.assertEqual(containers[0].memory_limit_mb, 1024.0)
 
     def test_snapshot_uses_only_the_fixed_helper(self) -> None:

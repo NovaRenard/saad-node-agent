@@ -116,9 +116,6 @@ def aggregate_resources(containers: list[ContainerTelemetry]) -> InstanceResourc
     return InstanceResources(
         cpu_percent=round(sum(container.cpu_percent for container in containers), 2),
         memory_used_mb=round(sum(container.memory_used_mb for container in containers), 2),
-        containers_total=len(containers),
-        containers_running=sum(container.status == "running" for container in containers),
-        containers_healthy=sum(container.health == "healthy" for container in containers),
     )
 
 

@@ -36,7 +36,7 @@ class MainCollectorTests(unittest.TestCase):
             with (
                 patch("agent.main.collect_host_telemetry", return_value=host),
                 patch("agent.main.collect_docker_snapshot", return_value=None),
-                patch("agent.main.discover_instances", return_value=instances),
+                patch("agent.main.discover_instances_from_helper", return_value=instances),
                 patch(
                     "agent.main.collect_deployment_state",
                     side_effect=[RuntimeError("bad state"), DeploymentTelemetry(status="healthy")],

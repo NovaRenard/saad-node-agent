@@ -17,7 +17,10 @@ NoNewPrivileges=false
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-CapabilityBoundingSet=
+# Required only for the fixed sudo helpers to transition to root and read
+# root- or app-owned deployment state. The agent process itself remains
+# unprivileged and receives no ambient capabilities.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_AUDIT_WRITE CAP_DAC_READ_SEARCH
 AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 UMask=0077

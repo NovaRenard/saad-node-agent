@@ -11,6 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_ENV_FILE = Path("/etc/saad-node-agent/agent.env")
 DEFAULT_SNAPSHOT_HELPER = Path("/usr/local/lib/saad-node-agent/snapshot.sh")
+DEFAULT_DEPLOY_METADATA_HELPER = Path("/usr/local/lib/saad-node-agent/deploy-metadata.py")
+DEFAULT_CONTROL_HELPER = Path("/usr/local/lib/saad-node-agent/control-helper.py")
 
 
 class Settings(BaseSettings):
@@ -33,6 +35,9 @@ class Settings(BaseSettings):
     saad_deploy_config_dir: Path = Path("/etc/saad-deploy")
     snapshot_helper_path: Path = DEFAULT_SNAPSHOT_HELPER
     snapshot_use_sudo: bool = True
+    deploy_metadata_helper_path: Path = DEFAULT_DEPLOY_METADATA_HELPER
+    deploy_metadata_use_sudo: bool = True
+    control_helper_path: Path = DEFAULT_CONTROL_HELPER
     http_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
     heartbeat_max_attempts: int = Field(default=3, ge=1, le=5)
 

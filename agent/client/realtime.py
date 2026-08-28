@@ -18,6 +18,10 @@ from agent.models import (
     DashboardEventType,
     HeartbeatPayload,
     ProtocolErrorPayload,
+    LogsChunkPayload,
+    LogsEndedPayload,
+    LogsStartPayload,
+    LogsStopPayload,
     make_agent_event,
     parse_dashboard_event,
 )
@@ -72,6 +76,24 @@ async def run_realtime(
                 emitter = AgentEventEmitter(settings.node_id)
                 last_snapshot_at = 0.0
                 snapshot_requested = True
+                log_tasks: dict[object, asyncio.Task] = {}
+
+                async def stream_logs(payload: LogsStartPayload, correlation_id) -> None:
+                    process = await asyncio.create_subprocess_exec(
+                        "sudo", "-n", str(settings.control_helper_path), "logs", payload.app_id, payload.container, str(payload.tail_lines),
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+                    )
+                    assert process.stdout is not None
+                    try:
+                        async for raw_line in process.stdout:
+                            text = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
+                            if text:
+                                await websocket.send(make_agent_event(AgentEventType.LOGS_CHUNK, settings.node_id, LogsChunkPayload(request_id=payload.request_id, text=text), correlation_id=correlation_id).model_dump_json())
+                    finally:
+                        if process.returncode is None:
+                            process.terminate()
+                        await process.wait()
+                        await websocket.send(make_agent_event(AgentEventType.LOGS_ENDED, settings.node_id, LogsEndedPayload(request_id=payload.request_id, reason="stopped"), correlation_id=correlation_id).model_dump_json())
                 while not stop_event.is_set():
                     started_at = asyncio.get_running_loop().time()
                     payload = await asyncio.to_thread(collect_payload, settings)
@@ -95,6 +117,16 @@ async def run_realtime(
                             envelope, _control = parse_dashboard_event(json.loads(raw_message))
                             if envelope.type == DashboardEventType.SNAPSHOT_REQUEST:
                                 snapshot_requested = True
+                            elif envelope.type == DashboardEventType.LOGS_START:
+                                assert isinstance(_control, LogsStartPayload)
+                                if len(log_tasks) >= 3:
+                                    raise ValueError("log stream limit reached")
+                                log_tasks[_control.request_id] = asyncio.create_task(stream_logs(_control, envelope.message_id))
+                            elif envelope.type == DashboardEventType.LOGS_STOP:
+                                assert isinstance(_control, LogsStopPayload)
+                                task = log_tasks.pop(_control.request_id, None)
+                                if task:
+                                    task.cancel()
                             else:
                                 logger.warning("Dashboard event %s is not enabled yet", envelope.type.value)
                                 await websocket.send(

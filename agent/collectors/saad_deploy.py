@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import shlex
+import subprocess
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -25,6 +27,7 @@ class InstanceConfig(BaseModel):
     compose_file: Path | None = None
     compose_project_name: str | None = None
     state_dir: Path | None = None
+    deployment: DeploymentTelemetry | None = None
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -62,8 +65,33 @@ def parse_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def _instance_from_values(
+    values: dict[str, Any], *, deployment: DeploymentTelemetry | None = None
+) -> InstanceConfig | None:
+    """Build an instance from the deliberately small, non-secret metadata set."""
+
+    app_id = values.get("APP_ID")
+    if not isinstance(app_id, str) or not app_id.strip():
+        return None
+
+    def optional_string(key: str) -> str | None:
+        value = values.get(key)
+        return value.strip() or None if isinstance(value, str) else None
+
+    return InstanceConfig(
+        app_id=app_id.strip(),
+        repository=optional_string("GITHUB_REPOSITORY"),
+        branch=optional_string("DEPLOY_BRANCH"),
+        app_dir=optional_string("APP_DIR"),
+        compose_file=optional_string("COMPOSE_FILE"),
+        compose_project_name=optional_string("COMPOSE_PROJECT_NAME"),
+        state_dir=optional_string("STATE_DIR"),
+        deployment=deployment,
+    )
+
+
 def discover_instances(config_dir: Path) -> list[InstanceConfig]:
-    """Discover each valid *.env declaration without letting one file stop others."""
+    """Discover instances directly when deployment configs are readable."""
 
     instances: list[InstanceConfig] = []
     try:
@@ -75,23 +103,75 @@ def discover_instances(config_dir: Path) -> list[InstanceConfig]:
     for env_path in env_paths:
         try:
             values = parse_env_file(env_path)
-            app_id = values.get("APP_ID", "").strip()
-            if not app_id:
+            instance = _instance_from_values(values)
+            if instance is None:
                 logger.warning("Skipping %s: APP_ID is missing", env_path)
                 continue
-            instances.append(
-                InstanceConfig(
-                    app_id=app_id,
-                    repository=values.get("GITHUB_REPOSITORY") or None,
-                    branch=values.get("DEPLOY_BRANCH") or None,
-                    app_dir=values.get("APP_DIR") or None,
-                    compose_file=values.get("COMPOSE_FILE") or None,
-                    compose_project_name=values.get("COMPOSE_PROJECT_NAME") or None,
-                    state_dir=values.get("STATE_DIR") or None,
-                )
-            )
+            instances.append(instance)
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             logger.exception("Skipping unreadable saad-deploy config %s: %s", env_path, exc)
+    return instances
+
+
+def discover_instances_from_helper(
+    helper_path: Path,
+    *,
+    use_sudo: bool = True,
+    timeout: float = 20.0,
+) -> list[InstanceConfig]:
+    """Read sanitized deployment metadata from the fixed privileged helper.
+
+    The helper accepts no arguments and only emits fields the dashboard is
+    permitted to receive. It lets deployment env files remain root-only.
+    """
+
+    command = [str(helper_path)]
+    if use_sudo:
+        command = ["sudo", "-n", *command]
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout)
+        payload = json.loads(result.stdout)
+        if not isinstance(payload, list):
+            raise ValueError("deployment metadata root must be a list")
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, ValueError) as exc:
+        logger.warning("Deployment metadata unavailable: %s", exc)
+        return []
+
+    instances: list[InstanceConfig] = []
+    for record in payload:
+        if not isinstance(record, dict):
+            logger.warning("Ignoring malformed deployment metadata record")
+            continue
+        deployment = DeploymentTelemetry()
+        raw_deployment = record.get("deployment")
+        if isinstance(raw_deployment, dict):
+            safe_deployment = {
+                key: value
+                for key, value in raw_deployment.items()
+                if key in {"status", "step", "current_sha", "previous_sha", "deployed_at"}
+                and isinstance(value, str)
+            }
+            try:
+                deployment = DeploymentTelemetry(**safe_deployment)
+            except ValueError:
+                logger.warning("Ignoring malformed deployment state for %s", record.get("app_id", "unknown"))
+
+        instance = _instance_from_values(
+            {
+                "APP_ID": record.get("app_id"),
+                "GITHUB_REPOSITORY": record.get("repository"),
+                "DEPLOY_BRANCH": record.get("branch"),
+                "APP_DIR": record.get("app_dir"),
+                "COMPOSE_FILE": record.get("compose_file"),
+                "COMPOSE_PROJECT_NAME": record.get("compose_project_name"),
+                "STATE_DIR": record.get("state_dir"),
+            },
+            deployment=deployment,
+        )
+        if instance is None:
+            logger.warning("Ignoring deployment metadata without APP_ID")
+            continue
+        instances.append(instance)
     return instances
 
 

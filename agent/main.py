@@ -18,7 +18,7 @@ from agent.client.dashboard import post_heartbeat
 from agent.client.realtime import RealtimeState, run_realtime
 from agent.collectors.docker import aggregate_resources, collect_docker_snapshot, containers_for_project
 from agent.collectors.host import collect_host_telemetry
-from agent.collectors.saad_deploy import collect_deployment_state, discover_instances
+from agent.collectors.saad_deploy import collect_deployment_state, discover_instances_from_helper
 from agent.config import Settings, load_settings
 from agent.models import DeploymentTelemetry, HeartbeatPayload, InstanceResources, InstanceTelemetry
 
@@ -35,12 +35,18 @@ def collect_payload(settings: Settings) -> HeartbeatPayload:
         timeout=settings.http_timeout_seconds + 10,
     )
     instances: list[InstanceTelemetry] = []
-    for instance in discover_instances(settings.saad_deploy_config_dir):
-        try:
-            deployment = collect_deployment_state(instance)
-        except Exception:  # State data is untrusted and must not break telemetry.
-            logger.exception("Could not collect deployment state for %s", instance.app_id)
-            deployment = DeploymentTelemetry()
+    for instance in discover_instances_from_helper(
+        settings.deploy_metadata_helper_path,
+        use_sudo=settings.deploy_metadata_use_sudo,
+        timeout=settings.http_timeout_seconds + 10,
+    ):
+        deployment = instance.deployment
+        if deployment is None:
+            try:
+                deployment = collect_deployment_state(instance)
+            except Exception:  # State data is untrusted and must not break telemetry.
+                logger.exception("Could not collect deployment state for %s", instance.app_id)
+                deployment = DeploymentTelemetry()
 
         try:
             containers = containers_for_project(snapshot, instance.compose_project_name) if snapshot else []
