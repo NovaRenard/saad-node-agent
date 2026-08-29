@@ -85,7 +85,7 @@ STATE_DIR=/var/lib/saad-deploy/koshakan
                 encoding="utf-8",
             )
             (state_dir / "current-sha").write_text("abc123", encoding="utf-8")
-            (state_dir / "last-error.log").write_text("token=must-not-leak", encoding="utf-8")
+            (state_dir / "last-error.log").write_text("GITHUB_TOKEN=must-not-leak POSTGRES_PASSWORD=also-secret", encoding="utf-8")
 
             records = helper.collect_instances(config_dir)
 
@@ -99,9 +99,10 @@ STATE_DIR=/var/lib/saad-deploy/koshakan
         self.assertEqual(record["deployment"]["finished_at"], "2026-08-29T12:01:00Z")
         serialized = json.dumps(record)
         self.assertNotIn("DATABASE_URL", serialized)
-        self.assertNotIn("GITHUB_TOKEN", serialized)
-        self.assertNotIn("last_error", serialized)
+        self.assertIn("last_error", serialized)
         self.assertNotIn("must-not-leak", serialized)
+        self.assertIn("GITHUB_TOKEN=[redacted]", serialized)
+        self.assertIn("POSTGRES_PASSWORD=[redacted]", serialized)
 
     def test_agent_uses_the_fixed_metadata_helper_and_rejects_extra_fields(self) -> None:
         completed = Mock(
@@ -123,7 +124,7 @@ STATE_DIR=/var/lib/saad-deploy/koshakan
         self.assertEqual(run.call_args.args[0], ["/fixed/deploy-metadata.py"])
         self.assertEqual([instance.app_id for instance in instances], ["koshakan"])
         self.assertEqual(instances[0].deployment.status, "healthy")
-        self.assertIsNone(instances[0].deployment.last_error)
+        self.assertEqual(instances[0].deployment.last_error, "must-not-leak")
 
     def test_installer_recreates_the_derived_virtualenv_on_updates(self) -> None:
         installer = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")

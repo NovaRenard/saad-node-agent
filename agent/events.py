@@ -38,7 +38,7 @@ class AgentEventEmitter:
     def changes_and_telemetry(self, heartbeat: HeartbeatPayload) -> list[ProtocolEnvelope]:
         events: list[ProtocolEnvelope] = [
             make_agent_event(
-                AgentEventType.NODE_TELEMETRY,
+                AgentEventType.TELEMETRY,
                 self.node_id,
                 NodeTelemetryEventPayload(
                     host=heartbeat.host,

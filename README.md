@@ -1,8 +1,8 @@
 # saad-node-agent
 
-`saad-node-agent` is a small, telemetry-only Python service installed on each Linux CRM node. It reports host health, discovered `saad-deploy` applications, deployment state, and per-container Docker telemetry to `saad-dashboard` every 15 seconds by default.
+`saad-node-agent` is a small Python service installed on each Linux CRM node. It reports host health, discovered `saad-deploy` applications, deployment state, and per-container Docker telemetry to `saad-dashboard` over a persistent authenticated WebSocket.
 
-It does not expose an HTTP server and cannot deploy, restart, roll back, execute commands, alter Docker, or change `saad-deploy` configuration.
+It does not expose an HTTP server. Its only control capability is a typed, fixed allowlist of `DEPLOY`, `RESTART`, and `ROLLBACK`; it has no generic shell, Docker, filesystem, service, environment, or raw-SHA command interface.
 
 ## Relationship to `saad-deploy`
 
@@ -25,7 +25,8 @@ systemd (unprivileged saad-node-agent user)
        ├─ read-only saad-deploy configs and state files
        ├─ sudo -n fixed snapshot.sh: Docker inspect/stats only
        ├─ sudo -n fixed deploy-metadata.py: secret-free CRM metadata/status
-       └─ HTTPS POST → saad-dashboard heartbeat endpoint
+       ├─ persistent authenticated WebSocket → saad-dashboard
+       └─ bounded HTTPS heartbeat only when WebSocket reconciliation is unavailable
 ```
 
 The process discovers config files for each heartbeat so a newly added CRM does not require an agent restart. A missing state file, invalid `status.json`, damaged Compose project, unavailable Docker daemon, unavailable dashboard, or one bad instance is contained and logged; the rest of the heartbeat continues.
@@ -93,9 +94,9 @@ journalctl -u saad-node-agent --since '1 hour ago'
 
 ## Security model
 
-The Python service runs as the unprivileged `saad-node-agent` user and does not have direct access to `/var/run/docker.sock` or the root-owned `saad-deploy` env files. systemd reads the root-owned `0600` config file and supplies its values as process environment; the agent does not need to reopen the secret file. It can run exactly two fixed, argument-free `sudo -n` helpers: the root-owned, group-executable Docker snapshot helper and deployment metadata helper. The associated sudoers entries are argument-free.
+The Python service runs as the unprivileged `saad-node-agent` user and does not have direct access to `/var/run/docker.sock` or the root-owned `saad-deploy` env files. systemd reads the root-owned `0600` config file and supplies its values as process environment; the agent does not need to reopen the secret file. It can run fixed `sudo -n` helpers only: read-only Docker snapshot, deployment metadata, and a strict control helper.
 
-The Docker helper has a fixed `PATH`, accepts no user input, and only runs these Docker read operations: `docker ps --all --quiet`, `docker inspect`, and `docker stats --all --no-stream`. It returns their data as JSON. The deployment helper safely parses (never sources) `/etc/saad-deploy/*.env` and emits only app ID, repository, branch, paths, Compose project name, and deployment status/SHA/timestamp. It never emits env values outside that allowlist or `last-error.log`. There is no generic shell-execution feature or dashboard-to-server command path.
+The Docker helper has a fixed `PATH`, accepts no user input, and only runs these Docker read operations: `docker ps --all --quiet`, `docker inspect`, and `docker stats --all --no-stream`. It returns their data as JSON. The deployment helper safely parses (never sources) `/etc/saad-deploy/*.env` and emits only allowlisted deployment metadata plus bounded, redacted `last-error.log` text. The control helper validates app and container identifiers, verifies Compose project ownership, and executes only fixed `saad-deploy` entrypoints (or fixed `docker logs`); it never calls a shell or accepts arbitrary arguments.
 
 The systemd unit additionally limits filesystem visibility, address families, and file permissions. Its bounded capabilities are only sufficient for `sudo` to start the two fixed helpers and read deployment state; the Python agent itself remains unprivileged. Deployment config and state are read only; no local database is created.
 

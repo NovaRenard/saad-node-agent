@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     deploy_metadata_helper_path: Path = DEFAULT_DEPLOY_METADATA_HELPER
     deploy_metadata_use_sudo: bool = True
     control_helper_path: Path = DEFAULT_CONTROL_HELPER
+    command_timeout_seconds: float = Field(default=900.0, ge=5, le=7_200)
     http_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
     heartbeat_max_attempts: int = Field(default=3, ge=1, le=5)
 

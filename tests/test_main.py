@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from agent.collectors.saad_deploy import InstanceConfig
 from agent.config import Settings
-from agent.main import collect_payload
+from agent.main import collect_payload, run_forever
 from agent.models import DeploymentTelemetry, HostTelemetry
 
 
@@ -47,3 +48,30 @@ class MainCollectorTests(unittest.TestCase):
         self.assertEqual([instance.app_id for instance in payload.instances], ["broken", "healthy"])
         self.assertEqual(payload.instances[0].deployment.status, "unknown")
         self.assertEqual(payload.instances[1].deployment.status, "healthy")
+
+
+class TransportPolicyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_healthy_realtime_connection_suppresses_http_fallback_heartbeats(self) -> None:
+        settings = Settings(
+            node_id="econrg-lab",
+            node_name="econrg-lab",
+            dashboard_url="https://dashboard.example",
+            node_token="test-token",
+            full_snapshot_interval_seconds=5,
+        )
+        stop_event = asyncio.Event()
+
+        async def healthy_realtime(_settings, state, stop, _collector) -> None:
+            state.connected.set()
+            await stop.wait()
+
+        with (
+            patch("agent.main.run_realtime", healthy_realtime),
+            patch("agent.main.post_heartbeat", AsyncMock()) as post_heartbeat,
+        ):
+            task = asyncio.create_task(run_forever(settings, stop_event))
+            await asyncio.sleep(0.05)
+            stop_event.set()
+            await task
+
+        post_heartbeat.assert_not_awaited()

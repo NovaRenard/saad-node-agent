@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,6 +31,7 @@ class DeploymentTelemetry(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     last_error: str | None = None
+    source: str | None = None
 
 
 class ContainerTelemetry(BaseModel):
@@ -78,7 +79,7 @@ class StrictEventModel(BaseModel):
 
 class AgentEventType(str, enum.Enum):
     NODE_SNAPSHOT = "node.snapshot"
-    NODE_TELEMETRY = "node.telemetry"
+    TELEMETRY = "telemetry"
     INSTANCE_CHANGED = "instance.changed"
     CONTAINER_CHANGED = "container.changed"
     DEPLOYMENT_CHANGED = "deployment.changed"
@@ -131,6 +132,24 @@ class ContainerChangedEventPayload(StrictEventModel):
 class DeploymentChangedEventPayload(StrictEventModel):
     app_id: str = Field(min_length=1, max_length=120, pattern=r"^[a-z0-9][a-z0-9_-]*$")
     deployment: DeploymentTelemetry
+
+
+class CommandAckPayload(StrictEventModel):
+    command_id: UUID
+    status: Literal["ACKNOWLEDGED"]
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result_summary: str | None = Field(default=None, max_length=2_000)
+    error: str | None = Field(default=None, max_length=4_000)
+
+
+class CommandResultPayload(StrictEventModel):
+    command_id: UUID
+    status: Literal["RUNNING", "SUCCESS", "FAILED"]
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result_summary: str | None = Field(default=None, max_length=2_000)
+    error: str | None = Field(default=None, max_length=4_000)
 
 
 class SnapshotRequestPayload(StrictEventModel):

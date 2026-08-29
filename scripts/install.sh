@@ -53,8 +53,9 @@ else
 fi
 
 cat >"$SUDOERS_FILE" <<'EOF'
-# Permit only fixed, argument-free, read-only telemetry helpers.
-saad-node-agent ALL=(root) NOPASSWD: /usr/local/lib/saad-node-agent/snapshot.sh "", /usr/local/lib/saad-node-agent/deploy-metadata.py "", /usr/local/lib/saad-node-agent/control-helper.py logs *
+# Permit only fixed helpers. control-helper.py validates the typed allowlist
+# and delegates only to fixed saad-deploy/Docker entrypoints.
+saad-node-agent ALL=(root) NOPASSWD: /usr/local/lib/saad-node-agent/snapshot.sh "", /usr/local/lib/saad-node-agent/deploy-metadata.py "", /usr/local/lib/saad-node-agent/control-helper.py logs *, /usr/local/lib/saad-node-agent/control-helper.py restart *, /usr/local/lib/saad-node-agent/control-helper.py deploy *, /usr/local/lib/saad-node-agent/control-helper.py rollback *
 EOF
 chmod 0440 "$SUDOERS_FILE"
 visudo -cf "$SUDOERS_FILE"

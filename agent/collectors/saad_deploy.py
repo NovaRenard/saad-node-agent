@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -15,6 +16,10 @@ from agent.models import DeploymentTelemetry
 
 logger = logging.getLogger(__name__)
 MAX_ERROR_BYTES = 8 * 1024
+SENSITIVE_ERROR_VALUE = re.compile(
+    r"(?i)(?P<key>(?:[a-z0-9_-]*(?:token|secret|password|api[_-]?key)[a-z0-9_-]*|authorization|cookie|database_url))\s*[:=]\s*[^\s]+"
+)
+URL_CREDENTIALS = re.compile(r"(?i)([a-z][a-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@")
 
 
 class InstanceConfig(BaseModel):
@@ -157,9 +162,13 @@ def discover_instances_from_helper(
                     "deployed_at",
                     "started_at",
                     "finished_at",
+                    "source",
+                    "last_error",
                 }
                 and isinstance(value, str)
             }
+            if isinstance(safe_deployment.get("last_error"), str):
+                safe_deployment["last_error"] = _sanitize_error_text(safe_deployment["last_error"])
             try:
                 deployment = DeploymentTelemetry(**safe_deployment)
             except ValueError:
@@ -197,6 +206,18 @@ def _read_optional_text(path: Path, *, max_bytes: int | None = None) -> str | No
         return None
 
 
+def _safe_error_text(path: Path) -> str | None:
+    value = _read_optional_text(path, max_bytes=MAX_ERROR_BYTES)
+    return _sanitize_error_text(value)
+
+
+def _sanitize_error_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = SENSITIVE_ERROR_VALUE.sub(lambda match: f"{match.group('key')}=[redacted]", value)
+    return URL_CREDENTIALS.sub(r"\1[redacted]@", value) or None
+
+
 def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
     """Read existing saad-deploy state files; missing or invalid files are normal."""
 
@@ -209,6 +230,7 @@ def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
     target_sha: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    source: str | None = None
     status_path = state_dir / "status.json"
     try:
         raw_status = _read_optional_text(status_path)
@@ -220,15 +242,17 @@ def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
             raw_step = parsed_status.get("step")
             status = str(raw_state) if raw_state is not None else status
             step = str(raw_step) if raw_step is not None else None
-            for key in ("target_sha", "started_at", "finished_at"):
+            for key in ("target_sha", "started_at", "finished_at", "source"):
                 value = parsed_status.get(key)
                 if isinstance(value, str) and value.strip():
                     if key == "target_sha":
                         target_sha = value.strip()
                     elif key == "started_at":
                         started_at = value.strip()
-                    else:
+                    elif key == "finished_at":
                         finished_at = value.strip()
+                    else:
+                        source = value.strip()
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("Ignoring invalid deployment status file %s: %s", status_path, exc)
 
@@ -241,5 +265,6 @@ def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
         deployed_at=_read_optional_text(state_dir / "deployed-at"),
         started_at=started_at,
         finished_at=finished_at,
-        last_error=_read_optional_text(state_dir / "last-error.log", max_bytes=MAX_ERROR_BYTES),
+        last_error=_safe_error_text(state_dir / "last-error.log"),
+        source=source,
     )

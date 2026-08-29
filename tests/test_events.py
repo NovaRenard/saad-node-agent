@@ -17,8 +17,8 @@ class AgentEventEmitterTests(unittest.TestCase):
         second_events = emitter.changes_and_telemetry(heartbeat)
 
         self.assertEqual(snapshot.type.value, "node.snapshot")
-        self.assertEqual([event.type.value for event in first_events], ["node.telemetry"])
-        self.assertEqual([event.type.value for event in second_events], ["node.telemetry"])
+        self.assertEqual([event.type.value for event in first_events], ["telemetry"])
+        self.assertEqual([event.type.value for event in second_events], ["telemetry"])
 
     def test_container_change_is_emitted_once_when_its_state_changes(self) -> None:
         heartbeat = heartbeat_payload()
@@ -37,5 +37,5 @@ class AgentEventEmitterTests(unittest.TestCase):
         changed = emitter.changes_and_telemetry(heartbeat)
         unchanged = emitter.changes_and_telemetry(heartbeat)
 
-        self.assertEqual([event.type.value for event in changed], ["node.telemetry", "container.changed"])
-        self.assertEqual([event.type.value for event in unchanged], ["node.telemetry"])
+        self.assertEqual([event.type.value for event in changed], ["telemetry", "container.changed"])
+        self.assertEqual([event.type.value for event in unchanged], ["telemetry"])

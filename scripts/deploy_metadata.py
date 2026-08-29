@@ -8,6 +8,7 @@ through a fixed sudoers rule and writes JSON to stdout for saad-node-agent.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -16,6 +17,11 @@ from typing import Any
 
 CONFIG_DIR = Path("/etc/saad-deploy")
 MAX_STATE_BYTES = 8 * 1024
+MAX_ERROR_BYTES = 8 * 1024
+SENSITIVE_ERROR_VALUE = re.compile(
+    r"(?i)(?P<key>(?:[a-z0-9_-]*(?:token|secret|password|api[_-]?key)[a-z0-9_-]*|authorization|cookie|database_url))\s*[:=]\s*[^\s]+"
+)
+URL_CREDENTIALS = re.compile(r"(?i)([a-z][a-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@")
 METADATA_KEYS = {
     "repository": "GITHUB_REPOSITORY",
     "branch": "DEPLOY_BRANCH",
@@ -62,6 +68,15 @@ def read_optional_text(path: Path, *, max_bytes: int = MAX_STATE_BYTES) -> str |
         return None
 
 
+def safe_error_text(path: Path) -> str | None:
+    value = read_optional_text(path, max_bytes=MAX_ERROR_BYTES)
+    if value is None:
+        return None
+    value = SENSITIVE_ERROR_VALUE.sub(lambda match: f"{match.group('key')}=[redacted]", value)
+    value = URL_CREDENTIALS.sub(r"\1[redacted]@", value)
+    return value or None
+
+
 def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
     """Return deployment fields that are useful and safe to send upstream."""
 
@@ -74,6 +89,8 @@ def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
         "deployed_at": None,
         "started_at": None,
         "finished_at": None,
+        "source": None,
+        "last_error": None,
     }
     if not state_dir:
         return deployment
@@ -92,7 +109,7 @@ def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
                 deployment["status"] = str(status)
             if step is not None:
                 deployment["step"] = str(step)
-            for key in ("target_sha", "started_at", "finished_at"):
+            for key in ("target_sha", "started_at", "finished_at", "source"):
                 value = parsed_status.get(key)
                 if isinstance(value, str) and value.strip():
                     deployment[key] = value.strip()
@@ -103,6 +120,11 @@ def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
         "deployed_at": "deployed-at",
     }.items():
         deployment[metadata_key] = read_optional_text(directory / filename)
+    # This is intentionally the only error file exposed by the root-owned
+    # helper. saad-deploy writes a fixed failure summary here, and the bounded
+    # read prevents an unexpected file size from turning telemetry into a log
+    # transport. Deployment env files and arbitrary paths are never exposed.
+    deployment["last_error"] = safe_error_text(directory / "last-error.log")
     return deployment
 
 
