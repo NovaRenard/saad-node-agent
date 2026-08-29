@@ -39,3 +39,34 @@ class AgentEventEmitterTests(unittest.TestCase):
 
         self.assertEqual([event.type.value for event in changed], ["telemetry", "container.changed"])
         self.assertEqual([event.type.value for event in unchanged], ["telemetry"])
+
+    def test_container_resource_changes_stay_in_compact_telemetry(self) -> None:
+        heartbeat = heartbeat_payload()
+        heartbeat.instances = [
+            InstanceTelemetry(
+                app_id="atlant",
+                deployment=DeploymentTelemetry(status="healthy"),
+                resources=InstanceResources(cpu_percent=1, memory_used_mb=100),
+                containers=[
+                    ContainerTelemetry(
+                        name="atlant-backend-1",
+                        service="backend",
+                        status="running",
+                        cpu_percent=1,
+                        memory_used_mb=100,
+                    )
+                ],
+            )
+        ]
+        emitter = AgentEventEmitter("econrg-lab")
+        emitter.snapshot(heartbeat)
+        heartbeat.instances[0].containers[0].cpu_percent = 72.5
+        heartbeat.instances[0].containers[0].memory_used_mb = 456
+
+        events = emitter.changes_and_telemetry(heartbeat)
+
+        self.assertEqual([event.type.value for event in events], ["telemetry"])
+        self.assertEqual(
+            events[0].payload["instances"][0]["containers"],
+            [{"name": "atlant-backend-1", "cpu_percent": 72.5, "memory_used_mb": 456.0}],
+        )

@@ -110,9 +110,18 @@ class NodeSnapshotEventPayload(StrictEventModel):
     instances: list[InstanceTelemetry] = Field(default_factory=list, max_length=100)
 
 
+class ContainerResourceTelemetry(StrictEventModel):
+    """Volatile container metrics carried by compact telemetry frames."""
+
+    name: str = Field(min_length=1, max_length=255)
+    cpu_percent: float = 0.0
+    memory_used_mb: float = 0.0
+
+
 class InstanceResourceTelemetry(StrictEventModel):
     app_id: str = Field(min_length=1, max_length=120, pattern=r"^[a-z0-9][a-z0-9_-]*$")
     resources: InstanceResources
+    containers: list[ContainerResourceTelemetry] = Field(default_factory=list, max_length=100)
 
 
 class NodeTelemetryEventPayload(StrictEventModel):

@@ -5,6 +5,7 @@ from __future__ import annotations
 from agent.models import (
     AgentEventType,
     ContainerChangedEventPayload,
+    ContainerResourceTelemetry,
     DeploymentChangedEventPayload,
     HeartbeatPayload,
     InstanceChangedEventPayload,
@@ -43,7 +44,18 @@ class AgentEventEmitter:
                 NodeTelemetryEventPayload(
                     host=heartbeat.host,
                     instances=[
-                        InstanceResourceTelemetry(app_id=instance.app_id, resources=instance.resources)
+                        InstanceResourceTelemetry(
+                            app_id=instance.app_id,
+                            resources=instance.resources,
+                            containers=[
+                                ContainerResourceTelemetry(
+                                    name=container.name,
+                                    cpu_percent=container.cpu_percent,
+                                    memory_used_mb=container.memory_used_mb,
+                                )
+                                for container in instance.containers
+                            ],
+                        )
                         for instance in heartbeat.instances
                     ],
                 ),
@@ -90,6 +102,22 @@ class AgentEventEmitter:
                 "compose_project_name": instance.compose_project_name,
             },
             "deployment": instance.deployment.model_dump(mode="json"),
-            "containers": {name: container.model_dump(mode="json") for name, container in containers_by_name.items()},
+            # CPU and memory are telemetry, not structural state. Comparing the
+            # whole model here caused every sampled container to emit a
+            # container.changed event on each collection cycle.
+            "containers": {
+                name: AgentEventEmitter._container_signature(container)
+                for name, container in containers_by_name.items()
+            },
             "containers_by_name": containers_by_name,
+        }
+
+    @staticmethod
+    def _container_signature(container) -> dict:
+        return {
+            "service": container.service,
+            "status": container.status,
+            "health": container.health,
+            "memory_limit_mb": container.memory_limit_mb,
+            "restart_count": container.restart_count,
         }

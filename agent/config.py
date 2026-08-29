@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     dashboard_url: HttpUrl
     node_token: str = Field(min_length=1, repr=False)
     heartbeat_interval_seconds: int = Field(default=15, ge=5, le=3600)
-    telemetry_interval_seconds: float = Field(default=2.0, ge=0.5, le=3600)
+    telemetry_interval_seconds: float = Field(default=5.0, ge=0.5, le=3600)
     full_snapshot_interval_seconds: int = Field(default=30, ge=5, le=3600)
     ws_ping_interval_seconds: int = Field(default=15, ge=5, le=300)
     ws_ping_timeout_seconds: int = Field(default=15, ge=5, le=300)
