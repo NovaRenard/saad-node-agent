@@ -80,7 +80,10 @@ STATE_DIR=/var/lib/saad-deploy/koshakan
                 ),
                 encoding="utf-8",
             )
-            (state_dir / "status.json").write_text('{"status":"healthy","step":"complete"}', encoding="utf-8")
+            (state_dir / "status.json").write_text(
+                '{"status":"healthy","step":"complete","target_sha":"abc123","started_at":"2026-08-29T12:00:00Z","finished_at":"2026-08-29T12:01:00Z"}',
+                encoding="utf-8",
+            )
             (state_dir / "current-sha").write_text("abc123", encoding="utf-8")
             (state_dir / "last-error.log").write_text("token=must-not-leak", encoding="utf-8")
 
@@ -91,6 +94,9 @@ STATE_DIR=/var/lib/saad-deploy/koshakan
         self.assertEqual(record["app_id"], "koshakan")
         self.assertEqual(record["deployment"]["status"], "healthy")
         self.assertEqual(record["deployment"]["current_sha"], "abc123")
+        self.assertEqual(record["deployment"]["target_sha"], "abc123")
+        self.assertEqual(record["deployment"]["started_at"], "2026-08-29T12:00:00Z")
+        self.assertEqual(record["deployment"]["finished_at"], "2026-08-29T12:01:00Z")
         serialized = json.dumps(record)
         self.assertNotIn("DATABASE_URL", serialized)
         self.assertNotIn("GITHUB_TOKEN", serialized)

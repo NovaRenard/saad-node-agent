@@ -70,7 +70,10 @@ def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
         "step": None,
         "current_sha": None,
         "previous_sha": None,
+        "target_sha": None,
         "deployed_at": None,
+        "started_at": None,
+        "finished_at": None,
     }
     if not state_dir:
         return deployment
@@ -89,6 +92,10 @@ def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
                 deployment["status"] = str(status)
             if step is not None:
                 deployment["step"] = str(step)
+            for key in ("target_sha", "started_at", "finished_at"):
+                value = parsed_status.get(key)
+                if isinstance(value, str) and value.strip():
+                    deployment[key] = value.strip()
 
     for metadata_key, filename in {
         "current_sha": "current-sha",

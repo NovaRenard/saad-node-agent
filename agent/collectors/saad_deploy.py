@@ -148,7 +148,16 @@ def discover_instances_from_helper(
             safe_deployment = {
                 key: value
                 for key, value in raw_deployment.items()
-                if key in {"status", "step", "current_sha", "previous_sha", "deployed_at"}
+                if key in {
+                    "status",
+                    "step",
+                    "current_sha",
+                    "previous_sha",
+                    "target_sha",
+                    "deployed_at",
+                    "started_at",
+                    "finished_at",
+                }
                 and isinstance(value, str)
             }
             try:
@@ -197,6 +206,9 @@ def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
     state_dir = instance.state_dir
     status = "unknown"
     step: str | None = None
+    target_sha: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
     status_path = state_dir / "status.json"
     try:
         raw_status = _read_optional_text(status_path)
@@ -208,6 +220,15 @@ def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
             raw_step = parsed_status.get("step")
             status = str(raw_state) if raw_state is not None else status
             step = str(raw_step) if raw_step is not None else None
+            for key in ("target_sha", "started_at", "finished_at"):
+                value = parsed_status.get(key)
+                if isinstance(value, str) and value.strip():
+                    if key == "target_sha":
+                        target_sha = value.strip()
+                    elif key == "started_at":
+                        started_at = value.strip()
+                    else:
+                        finished_at = value.strip()
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("Ignoring invalid deployment status file %s: %s", status_path, exc)
 
@@ -216,6 +237,9 @@ def collect_deployment_state(instance: InstanceConfig) -> DeploymentTelemetry:
         step=step,
         current_sha=_read_optional_text(state_dir / "current-sha"),
         previous_sha=_read_optional_text(state_dir / "previous-sha"),
+        target_sha=target_sha,
         deployed_at=_read_optional_text(state_dir / "deployed-at"),
+        started_at=started_at,
+        finished_at=finished_at,
         last_error=_read_optional_text(state_dir / "last-error.log", max_bytes=MAX_ERROR_BYTES),
     )

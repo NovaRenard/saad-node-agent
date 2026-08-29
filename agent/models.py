@@ -26,7 +26,10 @@ class DeploymentTelemetry(BaseModel):
     step: str | None = None
     current_sha: str | None = None
     previous_sha: str | None = None
+    target_sha: str | None = None
     deployed_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
     last_error: str | None = None
 
 
