@@ -68,7 +68,7 @@ The production config is `/etc/saad-node-agent/agent.env` (mode `0600`):
 ```env
 NODE_ID=econrg-lab
 NODE_NAME=econrg-lab
-DASHBOARD_URL=https://app.salesrbas.tech
+DASHBOARD_URL=https://app.saadsarbas.tech
 NODE_TOKEN=replace-with-node-token
 HEARTBEAT_INTERVAL_SECONDS=15
 SAAD_DEPLOY_PATH=/opt/saad-deploy
