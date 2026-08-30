@@ -118,6 +118,7 @@ async def run_realtime(
             helper_operation = {
                 "DEPLOY": "deploy",
                 "RESTART": "restart",
+                "RECREATE": "recreate",
                 "ROLLBACK": "rollback",
             }[payload.command_type.value]
             process = await asyncio.create_subprocess_exec(

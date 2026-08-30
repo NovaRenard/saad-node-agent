@@ -46,10 +46,10 @@ class RealtimeTransportTests(unittest.TestCase):
             "node_id": "econrg-lab",
             "sent_at": "2026-08-29T12:00:00+00:00",
             "correlation_id": None,
-            "payload": {"command_id": str(command_id), "command_type": "RESTART", "app_id": "atlant"},
+            "payload": {"command_id": str(command_id), "command_type": "RECREATE", "app_id": "atlant"},
         }
         _envelope, payload = parse_dashboard_event(valid)
-        self.assertEqual(payload.command_type.value, "RESTART")
+        self.assertEqual(payload.command_type.value, "RECREATE")
         valid["payload"] = {"command_id": str(command_id), "command_type": "SHELL", "app_id": "atlant"}
         with self.assertRaises(ValueError):
             parse_dashboard_event(valid)
@@ -98,7 +98,7 @@ class RealtimeCommandFlowTests(unittest.IsolatedAsyncioTestCase):
                 "node_id": "econrg-lab",
                 "sent_at": "2026-08-29T12:00:00+00:00",
                 "correlation_id": None,
-                "payload": {"command_id": str(command_id), "command_type": CommandType.RESTART.value, "app_id": "atlant"},
+                "payload": {"command_id": str(command_id), "command_type": CommandType.RECREATE.value, "app_id": "atlant"},
             }
         )
 
@@ -147,7 +147,7 @@ class RealtimeCommandFlowTests(unittest.IsolatedAsyncioTestCase):
 
         lifecycle = [(message["type"], message["payload"].get("status")) for message in socket.messages if message["type"].startswith("command.")]
         self.assertEqual(lifecycle, [("command.ack", "ACKNOWLEDGED"), ("command.result", "RUNNING"), ("command.result", "SUCCESS")])
-        self.assertEqual(spawn.call_args.args[:5], ("sudo", "-n", str(settings.control_helper_path), "restart", "atlant"))
+        self.assertEqual(spawn.call_args.args[:5], ("sudo", "-n", str(settings.control_helper_path), "recreate", "atlant"))
 
     async def test_live_logs_are_streamed_only_from_the_fixed_helper(self) -> None:
         stop_event = asyncio.Event()

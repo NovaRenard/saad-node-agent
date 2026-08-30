@@ -31,6 +31,7 @@ class AgentEventEmitter:
             self.node_id,
             NodeSnapshotEventPayload(
                 agent_version=heartbeat.agent_version,
+                capabilities=heartbeat.capabilities,
                 host=heartbeat.host,
                 instances=heartbeat.instances,
             ),

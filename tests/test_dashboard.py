@@ -29,6 +29,7 @@ class DashboardClientTests(unittest.TestCase):
         body = received["body"]
         self.assertIn(b'"protocol_version":1', body)  # type: ignore[arg-type]
         self.assertIn(b'"node_id":"econrg-lab"', body)  # type: ignore[arg-type]
+        self.assertIn(b'"RECREATE"', body)  # type: ignore[arg-type]
 
     def test_dashboard_unavailable_returns_false_without_crashing(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

@@ -116,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         return _logs(args[1], args[2], args[3])
     if operation == "restart" and len(args) == 2:
         return _exec_fixed("restart.sh", args[1])
+    if operation == "recreate" and len(args) == 2:
+        return _exec_fixed("recreate.sh", args[1])
     if operation == "deploy" and len(args) == 2:
         return _exec_fixed("deploy-sha.sh", args[1], "--query-ci", "--source", "manual")
     if operation == "rollback" and len(args) == 2:

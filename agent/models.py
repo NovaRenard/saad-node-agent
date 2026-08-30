@@ -13,10 +13,24 @@ from pydantic import BaseModel, ConfigDict, Field
 class HostTelemetry(BaseModel):
     hostname: str
     cpu_percent: float
+    logical_cpu_count: int | None = None
+    physical_cpu_count: int | None = None
     memory_used_mb: float
     memory_total_mb: float
+    memory_available_mb: float | None = None
     disk_used_gb: float
     disk_total_gb: float
+    swap_used_mb: float | None = None
+    swap_total_mb: float | None = None
+    network_rx_bytes_total: int | None = None
+    network_tx_bytes_total: int | None = None
+    disk_read_bytes_total: int | None = None
+    disk_write_bytes_total: int | None = None
+    os_name: str | None = None
+    os_version: str | None = None
+    kernel_version: str | None = None
+    docker_available: bool | None = None
+    docker_version: str | None = None
     uptime_seconds: int
     load_average: list[float]
 
@@ -68,6 +82,7 @@ class HeartbeatPayload(BaseModel):
     protocol_version: int = 1
     node_id: str
     agent_version: str
+    capabilities: list[str] = Field(default_factory=lambda: list(AGENT_CAPABILITIES))
     sent_at: datetime
     host: HostTelemetry
     instances: list[InstanceTelemetry] = Field(default_factory=list)
@@ -101,11 +116,23 @@ class DashboardEventType(str, enum.Enum):
 class CommandType(str, enum.Enum):
     DEPLOY = "DEPLOY"
     RESTART = "RESTART"
+    RECREATE = "RECREATE"
     ROLLBACK = "ROLLBACK"
+
+
+AGENT_CAPABILITIES = (
+    "DEPLOY",
+    "RESTART",
+    "ROLLBACK",
+    "RECREATE",
+    "LOGS",
+    "HOST_METRICS_V2",
+)
 
 
 class NodeSnapshotEventPayload(StrictEventModel):
     agent_version: str
+    capabilities: list[str] = Field(default_factory=lambda: list(AGENT_CAPABILITIES), max_length=16)
     host: HostTelemetry
     instances: list[InstanceTelemetry] = Field(default_factory=list, max_length=100)
 

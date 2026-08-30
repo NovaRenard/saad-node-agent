@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from agent.events import AgentEventEmitter
-from agent.models import ContainerTelemetry, DeploymentTelemetry, InstanceResources, InstanceTelemetry
+from agent.models import AGENT_CAPABILITIES, ContainerTelemetry, DeploymentTelemetry, InstanceResources, InstanceTelemetry
 from tests.helpers import heartbeat_payload
 
 
@@ -17,6 +17,7 @@ class AgentEventEmitterTests(unittest.TestCase):
         second_events = emitter.changes_and_telemetry(heartbeat)
 
         self.assertEqual(snapshot.type.value, "node.snapshot")
+        self.assertEqual(snapshot.payload["capabilities"], list(AGENT_CAPABILITIES))
         self.assertEqual([event.type.value for event in first_events], ["telemetry"])
         self.assertEqual([event.type.value for event in second_events], ["telemetry"])
 

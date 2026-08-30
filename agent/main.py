@@ -20,7 +20,7 @@ from agent.collectors.docker import aggregate_resources, collect_docker_snapshot
 from agent.collectors.host import collect_host_telemetry
 from agent.collectors.saad_deploy import collect_deployment_state, discover_instances_from_helper
 from agent.config import Settings, load_settings
-from agent.models import DeploymentTelemetry, HeartbeatPayload, InstanceResources, InstanceTelemetry
+from agent.models import AGENT_CAPABILITIES, DeploymentTelemetry, HeartbeatPayload, InstanceResources, InstanceTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,7 @@ def collect_payload(settings: Settings) -> HeartbeatPayload:
     return HeartbeatPayload(
         node_id=settings.node_id,
         agent_version=__version__,
+        capabilities=list(AGENT_CAPABILITIES),
         sent_at=datetime.now(timezone.utc),
         host=host,
         instances=instances,

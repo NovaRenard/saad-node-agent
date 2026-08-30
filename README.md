@@ -2,7 +2,7 @@
 
 `saad-node-agent` is a small Python service installed on each Linux CRM node. It reports host health, discovered `saad-deploy` applications, deployment state, and per-container Docker telemetry to `saad-dashboard` over a persistent authenticated WebSocket.
 
-It does not expose an HTTP server. Its only control capability is a typed, fixed allowlist of `DEPLOY`, `RESTART`, and `ROLLBACK`; it has no generic shell, Docker, filesystem, service, environment, or raw-SHA command interface.
+It does not expose an HTTP server. Its only control capability is a typed, fixed allowlist of `DEPLOY`, `RESTART`, `RECREATE`, and `ROLLBACK`; it has no generic shell, Docker, filesystem, service, environment, or raw-SHA command interface.
 
 ## Relationship to `saad-deploy`
 
@@ -21,7 +21,7 @@ Adding `/etc/saad-deploy/koshakan.env` automatically adds that instance to the n
 ```text
 systemd (unprivileged saad-node-agent user)
   └─ Python agent
-       ├─ psutil: host CPU/RAM/disk/uptime/load
+       ├─ psutil: host CPU/RAM/disk/swap/uptime/load plus cumulative network and disk-I/O counters
        ├─ read-only saad-deploy configs and state files
        ├─ sudo -n fixed snapshot.sh: Docker inspect/stats only
        ├─ sudo -n fixed deploy-metadata.py: secret-free CRM metadata/status
@@ -41,6 +41,21 @@ Content-Type: application/json
 ```
 
 Its versioned JSON payload contains `protocol_version: 1`, `node_id`, agent version and UTC timestamp; host telemetry; and instances with repository/branch, deployment state, per-container telemetry, plus CPU/RAM resource values. Containers are assigned by the official Docker Compose labels `com.docker.compose.project` and `com.docker.compose.service`, never by a name substring. A successful dashboard response is `{"ok": true}`.
+
+Host telemetry v2 adds logical/physical CPU counts, available memory, swap,
+cumulative network RX/TX and disk I/O byte counters, OS/kernel details, and
+Docker availability/version. Counters are deliberately cumulative: the
+dashboard derives rates and safely treats a reboot/reset as a gap. The agent
+also reports these self-declared capabilities on each full snapshot and HTTP
+heartbeat:
+
+```text
+DEPLOY RESTART ROLLBACK RECREATE LOGS HOST_METRICS_V2
+```
+
+The dashboard rollout must be upgraded first: its v2 fields are optional, so
+it accepts both this expanded heartbeat and the original agent schema. HTTP
+heartbeat remains the same fallback transport.
 
 For transient connection errors and 5xx responses the client uses a bounded exponential retry (up to three attempts), then waits until the next heartbeat interval. Authentication and other 4xx errors are logged and retried only on the next normal interval.
 
@@ -91,6 +106,21 @@ systemctl status saad-node-agent
 journalctl -u saad-node-agent -f
 journalctl -u saad-node-agent --since '1 hour ago'
 ```
+
+### Fixed remote operations
+
+The dashboard can request only these typed operations for a registered app ID:
+
+- **Deploy latest** runs the existing fixed `deploy-sha.sh --query-ci` workflow.
+- **Restart** restarts registered application containers without recreating them.
+- **Apply config / Recreate** runs only `/opt/saad-deploy/bin/recreate.sh <app-id>`.
+  It uses the current SHA, force-recreates only configured application services,
+  and does not run migrations, build images, or touch infrastructure services.
+- **Rollback** runs the fixed rollback entrypoint.
+
+The helper rejects unknown commands, malformed IDs, duplicate lifecycle command
+IDs, extra arguments, and all shell/Docker/Compose input. RECREATE therefore
+does not expand the agent into a generic remote executor.
 
 ## Security model
 

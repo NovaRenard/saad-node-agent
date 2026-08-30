@@ -44,3 +44,15 @@ class ControlHelperTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "executed"):
                 helper.main(["restart", "atlant"])
         self.assertEqual(execv.call_args.args[1], [str(helper.DEPLOY_BIN_DIR / "restart.sh"), "atlant"])
+
+    def test_recreate_is_a_fixed_entrypoint_with_no_extra_arguments(self) -> None:
+        helper = load_control_helper()
+        with (
+            patch.object(helper, "registered_app", return_value={"COMPOSE_PROJECT_NAME": "atlant"}),
+            patch.object(helper.Path, "is_file", return_value=True),
+            patch.object(helper.os, "execv", side_effect=RuntimeError("executed")) as execv,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "executed"):
+                helper.main(["recreate", "atlant"])
+        self.assertEqual(execv.call_args.args[1], [str(helper.DEPLOY_BIN_DIR / "recreate.sh"), "atlant"])
+        self.assertEqual(helper.main(["recreate", "atlant", "web"]), 64)
