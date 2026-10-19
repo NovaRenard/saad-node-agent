@@ -8,7 +8,7 @@ import unittest
 from uuid import uuid4
 from unittest.mock import AsyncMock, patch
 
-from agent.client.realtime import CommandExecutionRegistry, RealtimeState, run_realtime, websocket_endpoint
+from agent.client.realtime import CommandExecutionRegistry, RealtimeState, command_failure_message, run_realtime, websocket_endpoint
 from agent.config import Settings
 from agent.models import AgentEventType, CommandAckPayload, CommandType, HeartbeatPayload, HostTelemetry, make_agent_event, parse_dashboard_event
 
@@ -53,6 +53,17 @@ class RealtimeTransportTests(unittest.TestCase):
         valid["payload"] = {"command_id": str(command_id), "command_type": "SHELL", "app_id": "atlant"}
         with self.assertRaises(ValueError):
             parse_dashboard_event(valid)
+
+
+class CommandFailureMessageTests(unittest.TestCase):
+    def test_lock_conflict_reports_actionable_cause_without_secret_output(self) -> None:
+        message = command_failure_message("atlant", 75)
+        self.assertIn("Deployment lock busy for atlant", message)
+        self.assertIn("exit code 75", message)
+        self.assertIn("Wait for it to finish", message)
+
+    def test_other_exit_codes_do_not_guess_the_failure_cause(self) -> None:
+        self.assertEqual(command_failure_message("atlant", 1), "Operation failed (exit code 1).")
 
 
 class RealtimeCommandFlowTests(unittest.IsolatedAsyncioTestCase):
