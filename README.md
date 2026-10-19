@@ -111,7 +111,7 @@ journalctl -u saad-node-agent --since '1 hour ago'
 
 The dashboard can request only these typed operations for a registered app ID:
 
-- **Deploy latest** runs the existing fixed `deploy-sha.sh --query-ci` workflow.
+- **Deploy latest** runs the existing fixed `deploy-sha.sh --query-ci` workflow. With the updated `saad-deploy` engine, manual deploys wait up to 120 seconds for the per-app deployment lock when the automatic poller is busy. A persistent lock conflict is reported explicitly as exit code 75, rather than as an unexplained generic error.
 - **Restart** restarts registered application containers without recreating them.
 - **Apply config / Recreate** runs only `/opt/saad-deploy/bin/recreate.sh <app-id>`.
   It uses the current SHA, force-recreates only configured application services,
