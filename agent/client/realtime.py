@@ -47,6 +47,19 @@ def websocket_endpoint(dashboard_url: str) -> str:
     return urlunsplit((scheme, parsed.netloc, f"{base_path}/api/v2/node-agent/ws", "", ""))
 
 
+def command_failure_message(app_id: str, exit_code: int) -> str:
+    """Return a bounded, actionable error without exposing privileged output."""
+
+    if exit_code == 75:
+        return (
+            f"Deployment lock busy for {app_id} (exit code 75). Another deploy or "
+            "maintenance command is running for this CRM. Wait for it to finish "
+            "before retrying; if it persists, inspect the server's saad-deploy "
+            "service and deployment lock."
+        )
+    return f"Operation failed (exit code {exit_code})."
+
+
 class RealtimeState:
     """Shared connection health observed by the HTTP fallback loop."""
 
@@ -136,7 +149,7 @@ async def run_realtime(
                 if exit_code == 0:
                     await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="SUCCESS", started_at=started_at, finished_at=datetime.now(timezone.utc), result_summary="Operation completed."))
                 else:
-                    await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="FAILED", started_at=started_at, finished_at=datetime.now(timezone.utc), error=f"Operation failed (exit code {exit_code})."))
+                    await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="FAILED", started_at=started_at, finished_at=datetime.now(timezone.utc), error=command_failure_message(payload.app_id, exit_code)))
         except asyncio.CancelledError:
             if process is not None and process.returncode is None:
                 process.kill()
