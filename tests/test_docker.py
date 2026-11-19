@@ -73,3 +73,42 @@ class DockerCollectorTests(unittest.TestCase):
         self.assertEqual(snapshot, {"inspect": [], "stats": []})
         self.assertEqual(run.call_args.args[0], ["/fixed/snapshot.sh"])
         self.assertTrue(run.call_args.kwargs["check"])
+
+
+def _record(name: str, project: str, service: str, status: str) -> dict:
+    return {
+        "Id": name,
+        "Name": f"/{name}",
+        "Config": {"Labels": {"com.docker.compose.project": project, "com.docker.compose.service": service}},
+        "State": {"Status": status},
+        "HostConfig": {"Memory": 0},
+    }
+
+
+class BlueGreenSelectionTests(unittest.TestCase):
+    def test_reports_shared_infra_and_live_slot_only(self) -> None:
+        snapshot = {
+            "inspect": [
+                _record("atlant-crm-postgres-1", "atlant-crm", "postgres", "running"),
+                _record("atlant-crm-backend-1", "atlant-crm", "backend", "exited"),
+                _record("atlant-crm-blue-backend-1", "atlant-crm-blue", "backend", "exited"),
+                _record("atlant-crm-green-backend-1", "atlant-crm-green", "backend", "running"),
+                _record("atlant-crm-green-worker-1", "atlant-crm-green", "worker", "running"),
+                _record("atlant-crm-greenhouse-x-1", "atlant-crm-greenhouse", "x", "running"),
+            ],
+            "stats": [],
+        }
+        names = [container.name for container in containers_for_project(snapshot, "atlant-crm")]
+        self.assertEqual(names, ["atlant-crm-green-backend-1", "atlant-crm-green-worker-1", "atlant-crm-postgres-1"])
+
+    def test_reports_every_slot_when_none_runs(self) -> None:
+        snapshot = {
+            "inspect": [
+                _record("app-db-1", "app", "db", "running"),
+                _record("app-blue-web-1", "app-blue", "web", "exited"),
+                _record("app-green-web-1", "app-green", "web", "exited"),
+            ],
+            "stats": [],
+        }
+        names = [container.name for container in containers_for_project(snapshot, "app")]
+        self.assertEqual(names, ["app-blue-web-1", "app-db-1", "app-green-web-1"])

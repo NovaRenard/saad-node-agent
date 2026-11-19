@@ -79,7 +79,8 @@ def allowed_container(app_id: str, container: str) -> bool:
     labels = record.get("Config", {}).get("Labels", {})
     return (
         isinstance(labels, dict)
-        and labels.get("com.docker.compose.project") == values["COMPOSE_PROJECT_NAME"]
+        and labels.get("com.docker.compose.project")
+        in {values["COMPOSE_PROJECT_NAME"], f"{values['COMPOSE_PROJECT_NAME']}-blue", f"{values['COMPOSE_PROJECT_NAME']}-green"}
         and bool(labels.get("com.docker.compose.service"))
     )
 

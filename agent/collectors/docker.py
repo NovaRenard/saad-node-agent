@@ -73,20 +73,65 @@ def parse_snapshot(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     return [record for record in inspect_records if isinstance(record, dict)]
 
 
+BLUE_GREEN_SLOTS = ("blue", "green")
+
+
+def _labels(record: dict[str, Any]) -> dict[str, Any]:
+    config = record.get("Config") if isinstance(record.get("Config"), dict) else {}
+    labels = config.get("Labels") if isinstance(config.get("Labels"), dict) else {}
+    return labels
+
+
+def _is_running(record: dict[str, Any]) -> bool:
+    state = record.get("State") if isinstance(record.get("State"), dict) else {}
+    return state.get("Status") == "running"
+
+
+def project_records(records: list[dict[str, Any]], compose_project_name: str) -> list[dict[str, Any]]:
+    """Return the containers that currently make up one saad-deploy project.
+
+    Blue/green deployments keep shared infrastructure (databases, caches) in
+    the base Compose project and the application in ``<project>-blue`` or
+    ``<project>-green``. Only slots with a running container are live; the
+    stopped standby slot and base-project leftovers of services that now run
+    in a slot are history, not part of the project. When no slot runs at all,
+    every slot container is reported so the outage stays visible.
+    """
+
+    base: list[dict[str, Any]] = []
+    slots: dict[str, list[dict[str, Any]]] = {slot: [] for slot in BLUE_GREEN_SLOTS}
+    for record in records:
+        project = _labels(record).get("com.docker.compose.project")
+        if project == compose_project_name:
+            base.append(record)
+            continue
+        for slot in BLUE_GREEN_SLOTS:
+            if project == f"{compose_project_name}-{slot}":
+                slots[slot].append(record)
+    if not any(slots.values()):
+        return base
+    live = [slot for slot in BLUE_GREEN_SLOTS if any(_is_running(record) for record in slots[slot])]
+    chosen = [record for slot in (live or BLUE_GREEN_SLOTS) for record in slots[slot]]
+    slot_services = {_labels(record).get("com.docker.compose.service") for record in chosen}
+    kept_base = [
+        record
+        for record in base
+        if _is_running(record) or _labels(record).get("com.docker.compose.service") not in slot_services
+    ]
+    return kept_base + chosen
+
+
 def containers_for_project(snapshot: dict[str, Any], compose_project_name: str | None) -> list[ContainerTelemetry]:
     """Select containers by official Compose labels, never by their names."""
 
     if not compose_project_name:
         return []
-    records = parse_snapshot(snapshot)
+    records = project_records(parse_snapshot(snapshot), compose_project_name)
     raw_stats = snapshot.get("stats", [])
     stats = [stat for stat in raw_stats if isinstance(stat, dict)] if isinstance(raw_stats, list) else []
     containers: list[ContainerTelemetry] = []
     for record in records:
-        config = record.get("Config") if isinstance(record.get("Config"), dict) else {}
-        labels = config.get("Labels") if isinstance(config.get("Labels"), dict) else {}
-        if labels.get("com.docker.compose.project") != compose_project_name:
-            continue
+        labels = _labels(record)
         container_id = str(record.get("Id") or "")
         stat = _find_stat(container_id, stats)
         memory_used_mb, memory_limit_mb = _parse_memory_usage(stat)
