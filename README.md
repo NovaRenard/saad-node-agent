@@ -14,7 +14,9 @@ It does not expose an HTTP server. Its only control capability is a typed, fixed
 - `deployed-at`
 - `last-error.log`
 
-Adding `/etc/saad-deploy/koshakan.env` automatically adds that instance to the next heartbeat; application names are not hard-coded.
+Adding `/etc/saad-deploy/koshakan.env` automatically adds that instance to the next heartbeat; application names are not hard-coded. A contract without `APP_ID` is identified by its file name (overlay files such as `koshakan.blue.env` are ignored).
+
+The secret-free project metadata `APP_NAME`, `APP_CATEGORY` (`crm`, `site`, `bot`, `service`, `internal`, `other`) and `PUBLIC_URL` is reported as `display_name`, `category` and `public_url`; an unknown category or unsafe URL is dropped. Upgrade `saad-dashboard` before the agent: older dashboards reject these fields.
 
 ## Architecture
 

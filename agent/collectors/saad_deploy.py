@@ -19,6 +19,8 @@ MAX_ERROR_BYTES = 8 * 1024
 SENSITIVE_ERROR_VALUE = re.compile(
     r"(?i)(?P<key>(?:[a-z0-9_-]*(?:token|secret|password|api[_-]?key)[a-z0-9_-]*|authorization|cookie|database_url))\s*[:=]\s*[^\s]+"
 )
+APP_CATEGORIES = frozenset({"crm", "site", "bot", "service", "internal", "other"})
+PUBLIC_URL = re.compile(r"https?://[^\s\"'<>]{1,240}")
 URL_CREDENTIALS = re.compile(r"(?i)([a-z][a-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@")
 
 
@@ -32,6 +34,9 @@ class InstanceConfig(BaseModel):
     compose_file: Path | None = None
     compose_project_name: str | None = None
     state_dir: Path | None = None
+    display_name: str | None = None
+    category: str | None = None
+    public_url: str | None = None
     deployment: DeploymentTelemetry | None = None
 
 
@@ -91,6 +96,9 @@ def _instance_from_values(
         compose_file=optional_string("COMPOSE_FILE"),
         compose_project_name=optional_string("COMPOSE_PROJECT_NAME"),
         state_dir=optional_string("STATE_DIR"),
+        display_name=(optional_string("APP_NAME") or "")[:120] or None,
+        category=category if (category := optional_string("APP_CATEGORY")) in APP_CATEGORIES else None,
+        public_url=url if (url := optional_string("PUBLIC_URL")) and PUBLIC_URL.fullmatch(url) else None,
         deployment=deployment,
     )
 
@@ -108,6 +116,8 @@ def discover_instances(config_dir: Path) -> list[InstanceConfig]:
     for env_path in env_paths:
         try:
             values = parse_env_file(env_path)
+            if not values.get("APP_ID", "").strip() and values.get("GITHUB_REPOSITORY", "").strip() and "." not in env_path.stem:
+                values["APP_ID"] = env_path.stem
             instance = _instance_from_values(values)
             if instance is None:
                 logger.warning("Skipping %s: APP_ID is missing", env_path)
@@ -183,6 +193,9 @@ def discover_instances_from_helper(
                 "COMPOSE_FILE": record.get("compose_file"),
                 "COMPOSE_PROJECT_NAME": record.get("compose_project_name"),
                 "STATE_DIR": record.get("state_dir"),
+                "APP_NAME": record.get("display_name"),
+                "APP_CATEGORY": record.get("category"),
+                "PUBLIC_URL": record.get("public_url"),
             },
             deployment=deployment,
         )
