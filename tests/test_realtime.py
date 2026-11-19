@@ -104,6 +104,7 @@ class RealtimeCommandFlowTests(unittest.IsolatedAsyncioTestCase):
 
         class Process:
             returncode = 0
+            stderr = None
 
             async def wait(self) -> int:
                 return 0
