@@ -18,6 +18,7 @@ from agent.client.dashboard import post_heartbeat
 from agent.client.realtime import RealtimeState, run_realtime
 from agent.collectors.docker import aggregate_resources, collect_docker_snapshot, containers_for_project
 from agent.collectors.host import collect_host_telemetry
+from agent.collectors.github_state import read_github_state
 from agent.collectors.saad_deploy import collect_deployment_state, discover_instances_from_helper
 from agent.config import Settings, load_settings
 from agent.models import AGENT_CAPABILITIES, DeploymentTelemetry, HeartbeatPayload, InstanceResources, InstanceTelemetry
@@ -65,6 +66,7 @@ def collect_payload(settings: Settings) -> HeartbeatPayload:
                 display_name=instance.display_name,
                 category=instance.category,
                 public_url=instance.public_url,
+                github=instance.github or read_github_state(instance.state_dir),
                 deployment=deployment,
                 resources=resources,
                 containers=containers,

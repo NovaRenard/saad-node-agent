@@ -12,7 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from agent.models import DeploymentTelemetry
+from agent.collectors.github_state import parse_github_state
+from agent.models import GitHubTelemetry, DeploymentTelemetry
 
 logger = logging.getLogger(__name__)
 MAX_ERROR_BYTES = 8 * 1024
@@ -37,6 +38,7 @@ class InstanceConfig(BaseModel):
     display_name: str | None = None
     category: str | None = None
     public_url: str | None = None
+    github: GitHubTelemetry | None = None
     deployment: DeploymentTelemetry | None = None
 
 
@@ -202,6 +204,7 @@ def discover_instances_from_helper(
         if instance is None:
             logger.warning("Ignoring deployment metadata without APP_ID")
             continue
+        instance.github = parse_github_state(record.get("github"))
         instances.append(instance)
     return instances
 

@@ -104,6 +104,7 @@ class AgentEventEmitter:
                 "display_name": instance.display_name,
                 "category": instance.category,
                 "public_url": instance.public_url,
+                "github": instance.github.model_dump(mode="json") if instance.github else None,
             },
             "deployment": instance.deployment.model_dump(mode="json"),
             # CPU and memory are telemetry, not structural state. Comparing the

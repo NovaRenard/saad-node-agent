@@ -48,6 +48,26 @@ class DeploymentTelemetry(BaseModel):
     source: str | None = None
 
 
+class GitCommitTelemetry(BaseModel):
+    sha: str
+    message: str | None = None
+    committed_at: str | None = None
+    url: str | None = None
+    status: str | None = None
+    conclusion: str | None = None
+
+
+class GitHubTelemetry(BaseModel):
+    """GitHub versions next to the deployed one, from saad-deploy's github.json."""
+
+    repository: str | None = None
+    branch: str | None = None
+    checked_at: str | None = None
+    latest: GitCommitTelemetry | None = None
+    deployable: GitCommitTelemetry | None = None
+    current: GitCommitTelemetry | None = None
+
+
 class ContainerTelemetry(BaseModel):
     name: str
     service: str | None = None
@@ -72,6 +92,7 @@ class InstanceTelemetry(BaseModel):
     display_name: str | None = None
     category: str | None = None
     public_url: str | None = None
+    github: GitHubTelemetry | None = None
     deployment: DeploymentTelemetry
     resources: InstanceResources
     containers: list[ContainerTelemetry] = Field(default_factory=list)

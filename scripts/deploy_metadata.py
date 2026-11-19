@@ -131,6 +131,27 @@ def collect_deployment_state(state_dir: str | None) -> dict[str, str | None]:
     return deployment
 
 
+def collect_github_state(state_dir: str | None) -> dict[str, Any] | None:
+    """Return saad-deploy's github.json (no secrets: SHAs, messages, run links).
+
+    The unprivileged agent re-validates every field before sending it.
+    """
+
+    if not state_dir:
+        return None
+    raw = read_optional_text(Path(state_dir) / "github.json", max_bytes=16 * 1024)
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    allowed = {"repository", "branch", "checked_at", "latest", "deployable", "current"}
+    return {key: item for key, item in value.items() if key in allowed}
+
+
 def collect_instances(config_dir: Path = CONFIG_DIR) -> list[dict[str, Any]]:
     """Collect only an explicit allowlist from every saad-deploy declaration."""
 
@@ -157,6 +178,7 @@ def collect_instances(config_dir: Path = CONFIG_DIR) -> list[dict[str, Any]]:
             value = values.get(source_key, "").strip()
             instance[output_key] = value or None
         instance["deployment"] = collect_deployment_state(instance["state_dir"])
+        instance["github"] = collect_github_state(instance["state_dir"])
         instances.append(instance)
     return instances
 
