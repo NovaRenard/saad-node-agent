@@ -29,6 +29,9 @@ METADATA_KEYS = {
     "compose_file": "COMPOSE_FILE",
     "compose_project_name": "COMPOSE_PROJECT_NAME",
     "state_dir": "STATE_DIR",
+    "display_name": "APP_NAME",
+    "category": "APP_CATEGORY",
+    "public_url": "PUBLIC_URL",
 }
 
 
@@ -143,6 +146,10 @@ def collect_instances(config_dir: Path = CONFIG_DIR) -> list[dict[str, Any]]:
         except (OSError, UnicodeDecodeError):
             continue
         app_id = values.get("APP_ID", "").strip()
+        # Contracts written by add-app.sh carry APP_ID; older ones are named
+        # <app-id>.env. Overlay files (*.blue.env) have no GITHUB_REPOSITORY.
+        if not app_id and values.get("GITHUB_REPOSITORY", "").strip() and "." not in config_path.stem:
+            app_id = config_path.stem
         if not app_id:
             continue
         instance = {"app_id": app_id}

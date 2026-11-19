@@ -14,6 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from websockets.asyncio.client import connect
 
+from agent.command_output import StderrTail, failure_message, success_summary
 from agent.config import Settings
 from agent.events import AgentEventEmitter
 from agent.models import (
@@ -47,17 +48,10 @@ def websocket_endpoint(dashboard_url: str) -> str:
     return urlunsplit((scheme, parsed.netloc, f"{base_path}/api/v2/node-agent/ws", "", ""))
 
 
-def command_failure_message(app_id: str, exit_code: int) -> str:
-    """Return a bounded, actionable error without exposing privileged output."""
+def command_failure_message(app_id: str, exit_code: int, lines: list[str] | None = None) -> str:
+    """Return a bounded, actionable, redacted error for a failed control helper run."""
 
-    if exit_code == 75:
-        return (
-            f"Deployment lock busy for {app_id} (exit code 75). Another deploy or "
-            "maintenance command is running for this CRM. Wait for it to finish "
-            "before retrying; if it persists, inspect the server's saad-deploy "
-            "service and deployment lock."
-        )
-    return f"Operation failed (exit code {exit_code})."
+    return failure_message(exit_code, lines or [], app_id=app_id)
 
 
 class RealtimeState:
@@ -137,19 +131,24 @@ async def run_realtime(
             process = await asyncio.create_subprocess_exec(
                 "sudo", "-n", str(settings.control_helper_path), helper_operation, payload.app_id,
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
             )
+            stderr_tail = StderrTail()
+            drain_task = asyncio.create_task(stderr_tail.drain(process.stderr))
             try:
                 exit_code = await asyncio.wait_for(process.wait(), timeout=settings.command_timeout_seconds)
             except TimeoutError:
                 process.kill()
                 await process.wait()
-                await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="FAILED", started_at=started_at, finished_at=datetime.now(timezone.utc), error="Operation timed out."))
+                await asyncio.gather(drain_task, return_exceptions=True)
+                minutes = int(settings.command_timeout_seconds // 60)
+                await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="FAILED", started_at=started_at, finished_at=datetime.now(timezone.utc), error=failure_message(None, stderr_tail.lines(), timeout_minutes=minutes)))
             else:
+                await asyncio.gather(drain_task, return_exceptions=True)
                 if exit_code == 0:
-                    await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="SUCCESS", started_at=started_at, finished_at=datetime.now(timezone.utc), result_summary="Operation completed."))
+                    await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="SUCCESS", started_at=started_at, finished_at=datetime.now(timezone.utc), result_summary=success_summary(stderr_tail.lines())))
                 else:
-                    await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="FAILED", started_at=started_at, finished_at=datetime.now(timezone.utc), error=command_failure_message(payload.app_id, exit_code)))
+                    await emit(AgentEventType.COMMAND_RESULT, CommandResultPayload(command_id=payload.command_id, status="FAILED", started_at=started_at, finished_at=datetime.now(timezone.utc), error=command_failure_message(payload.app_id, exit_code, stderr_tail.lines())))
         except asyncio.CancelledError:
             if process is not None and process.returncode is None:
                 process.kill()

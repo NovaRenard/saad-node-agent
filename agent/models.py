@@ -69,6 +69,9 @@ class InstanceTelemetry(BaseModel):
     repository: str | None = None
     branch: str | None = None
     compose_project_name: str | None = None
+    display_name: str | None = None
+    category: str | None = None
+    public_url: str | None = None
     deployment: DeploymentTelemetry
     resources: InstanceResources
     containers: list[ContainerTelemetry] = Field(default_factory=list)

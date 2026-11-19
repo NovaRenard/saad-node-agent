@@ -14,7 +14,9 @@ It does not expose an HTTP server. Its only control capability is a typed, fixed
 - `deployed-at`
 - `last-error.log`
 
-Adding `/etc/saad-deploy/koshakan.env` automatically adds that instance to the next heartbeat; application names are not hard-coded.
+Adding `/etc/saad-deploy/koshakan.env` automatically adds that instance to the next heartbeat; application names are not hard-coded. A contract without `APP_ID` is identified by its file name (overlay files such as `koshakan.blue.env` are ignored).
+
+The secret-free project metadata `APP_NAME`, `APP_CATEGORY` (`crm`, `site`, `bot`, `service`, `internal`, `other`) and `PUBLIC_URL` is reported as `display_name`, `category` and `public_url`; an unknown category or unsafe URL is dropped. Upgrade `saad-dashboard` before the agent: older dashboards reject these fields.
 
 ## Architecture
 
@@ -111,7 +113,7 @@ journalctl -u saad-node-agent --since '1 hour ago'
 
 The dashboard can request only these typed operations for a registered app ID:
 
-- **Deploy latest** runs the existing fixed `deploy-sha.sh --query-ci` workflow. With the updated `saad-deploy` engine, manual deploys wait up to 120 seconds for the per-app deployment lock when the automatic poller is busy. A persistent lock conflict is reported explicitly as exit code 75, rather than as an unexplained generic error.
+- **Deploy latest** runs the existing fixed `deploy-sha.sh --query-ci` workflow. With the updated `saad-deploy` engine, manual commands wait up to `MANUAL_LOCK_WAIT_SECONDS` (default 900) for the per-app deployment lock when the automatic poller is busy. A persistent lock conflict is reported explicitly as exit code 75, and every failure includes the engine's own `saad-deploy:` reason plus a redacted stderr tail.
 - **Restart** restarts registered application containers without recreating them.
 - **Apply config / Recreate** runs only `/opt/saad-deploy/bin/recreate.sh <app-id>`.
   It uses the current SHA, force-recreates only configured application services,
